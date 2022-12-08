@@ -1,0 +1,66 @@
+image: terraform:latest
+
+variables:
+  VAULT_SKIP_VERIFY: "true"
+  VAULT_ADDR: "https://VAULT:8200"
+  TF_HTTP_USERNAME: gitlab-ci-token
+  TF_HTTP_PASSWORD: ${CI_JOB_TOKEN}
+  PROJECT_ID: $CI_PROJECT_ID
+  STATE_PATH: ${CI_PROJECT_NAME}_state
+  TF_HTTP_ADDRESS: https://GITLAB/api/v4/projects/$PROJECT_ID/terraform/state/$STATE_PATH
+  TF_HTTP_LOCK_ADDRESS: https://GITLAB/api/v4/projects/$PROJECT_ID/terraform/state/$STATE_PATH/lock
+  TF_HTTP_UNLOCK_ADDRESS: https://GITLAB/api/v4/projects/$PROJECT_ID/terraform/state/$STATE_PATH/lock
+
+cache:
+  paths:
+    - test/.terraform
+    - test/.terraform.lock.hcl
+
+stages:
+  - vault_login
+  - validate
+  - plan
+  - apply
+#   - destroy
+
+vault_login:
+  stage: vault_login
+  image: hashicorp/vault:latest
+  script:
+    - echo "export VAULT_TOKEN="$(vault write -field=token auth/gitlab/login role=admin-gitlab jwt=$CI_JOB_JWT)"" > vault_token.env
+    - VAULT_ADDR=https://OTHERVAULT:8200 && echo "export TF_VAR_VAULT_PASS="$(vault write -field=token auth/gitlab/login role=gitlab jwt=$CI_JOB_JWT)"" >> vault_token.env
+  artifacts:
+    paths:
+      - vault_token.env
+      
+validate:
+  stage: validate
+  before_script:
+   - cd test
+   - rm -rf .terraform
+   - terraform init
+  script:
+    - terraform validate   
+plan:
+  stage: plan
+  script:
+    - source vault_token.env
+    - cd test
+    - terraform plan -out="planfile"
+  artifacts:
+    paths:
+      - test/planfile
+
+apply:
+  stage: apply
+  script:
+    - source vault_token.env
+    - cd test
+    - terraform apply -input=false "planfile"
+  when: manual
+
+# destroy: 
+#   stage: destroy
+#   script:
+#     - terraform destroy --auto-approve
+#   when: manual 
