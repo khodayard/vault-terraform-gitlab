@@ -1,4 +1,4 @@
-# vault-terraform-gitlab
+# vault-terraform-gitlab-backend-gitlab-ci
 
 This is to:
   - manage Hashicorp Vault
